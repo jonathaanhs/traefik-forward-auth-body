@@ -1,3 +1,4 @@
+//revive:disable:var-naming
 package traefik_forward_auth_body
 
 import (

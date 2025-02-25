@@ -57,4 +57,5 @@ linters:
     - gocyclo
     - lll
     - dupl
-    - gosec 
+    - gosec
+    - stylecheck 
