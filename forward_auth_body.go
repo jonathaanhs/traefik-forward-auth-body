@@ -1,9 +1,10 @@
-// Package traefik_forward_auth_body is a Traefik plugin that forwards request bodies in forward authentication.
-package traefik_forward_auth_body
+// Package forwardauth is a Traefik plugin that forwards request bodies in forward authentication.
+package forwardauth
 
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 )
@@ -20,15 +21,19 @@ func CreateConfig() *Config {
 
 // ForwardAuthBody is a plugin that forwards request bodies in forward authentication.
 type ForwardAuthBody struct {
-	next           http.Handler
+	name           string // align for better memory layout
 	forwardAuthURL string
-	name           string
+	next           http.Handler
 }
 
 // New creates a new ForwardAuthBody plugin.
-func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
+func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	if config == nil {
-		config = CreateConfig()
+		return nil, fmt.Errorf("configuration cannot be nil")
+	}
+
+	if config.ForwardAuthURL == "" {
+		return nil, fmt.Errorf("forwardAuthURL cannot be empty")
 	}
 
 	return &ForwardAuthBody{
@@ -47,18 +52,14 @@ func (f *ForwardAuthBody) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Create a new request to the forward auth service
-	forwardReq, err := http.NewRequest(req.Method, f.forwardAuthURL, bytes.NewBuffer(body))
+	forwardReq, err := http.NewRequestWithContext(req.Context(), req.Method, f.forwardAuthURL, bytes.NewBuffer(body))
 	if err != nil {
 		http.Error(rw, "Error creating forward auth request", http.StatusInternalServerError)
 		return
 	}
 
 	// Copy headers from original request
-	for key, values := range req.Header {
-		for _, value := range values {
-			forwardReq.Header.Add(key, value)
-		}
-	}
+	forwardReq.Header = req.Header.Clone()
 
 	// Send the request to the forward auth service
 	client := &http.Client{}
@@ -79,7 +80,10 @@ func (f *ForwardAuthBody) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// If forward auth fails, return the error response
 	if resp.StatusCode != http.StatusOK {
 		rw.WriteHeader(resp.StatusCode)
-		io.Copy(rw, resp.Body)
+		if _, err := io.Copy(rw, resp.Body); err != nil {
+			http.Error(rw, "Error copying response body", http.StatusInternalServerError)
+			return
+		}
 		return
 	}
 

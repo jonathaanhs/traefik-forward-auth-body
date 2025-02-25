@@ -1,4 +1,4 @@
-package traefik_forward_auth_body
+package forwardauth
 
 import (
 	"bytes"
@@ -41,7 +41,9 @@ func TestForwardAuthBody_SuccessfulAuth(t *testing.T) {
 		// Set auth response headers
 		w.Header().Set("X-Auth-User", "testuser")
 		w.Header().Set("X-Custom-Header", "custom-value")
-		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte("OK")); err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
 	}))
 	defer mockAuthServer.Close()
 
@@ -74,7 +76,9 @@ func TestForwardAuthBody_SuccessfulAuth(t *testing.T) {
 		}
 
 		rw.WriteHeader(http.StatusOK)
-		rw.Write([]byte("OK"))
+		if _, err := rw.Write([]byte("OK")); err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
 	})
 
 	handler, err := New(context.Background(), nextHandler, cfg, "test-forward-auth-body")
@@ -102,7 +106,9 @@ func TestForwardAuthBody_FailedAuth(t *testing.T) {
 	mockAuthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Auth-Error", "Invalid credentials")
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte("Unauthorized"))
+		if _, err := w.Write([]byte("Unauthorized")); err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
 	}))
 	defer mockAuthServer.Close()
 
@@ -114,7 +120,10 @@ func TestForwardAuthBody_FailedAuth(t *testing.T) {
 		t.Error("Next handler should not be called when auth fails")
 	})
 
-	handler, _ := New(context.Background(), nextHandler, cfg, "test-forward-auth-body")
+	handler, err := New(context.Background(), nextHandler, cfg, "test-forward-auth-body")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "http://localhost", bytes.NewBufferString(`{"test":"data"}`))
 	recorder := httptest.NewRecorder()
@@ -142,7 +151,10 @@ func TestForwardAuthBody_InvalidURL(t *testing.T) {
 		t.Error("Next handler should not be called when auth request fails")
 	})
 
-	handler, _ := New(context.Background(), nextHandler, cfg, "test-forward-auth-body")
+	handler, err := New(context.Background(), nextHandler, cfg, "test-forward-auth-body")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "http://localhost", bytes.NewBufferString(`{"test":"data"}`))
 	recorder := httptest.NewRecorder()
@@ -212,7 +224,7 @@ func TestForwardAuthBody_InvalidRequestBody(t *testing.T) {
 // errorReader is a mock io.Reader that always returns an error
 type errorReader struct{}
 
-func (e *errorReader) Read(p []byte) (n int, err error) {
+func (e *errorReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("mock read error")
 }
 
@@ -226,7 +238,7 @@ func TestCreateConfig(t *testing.T) {
 	}
 }
 
-func TestNew(t *testing.T) {
+func TestNew_Validation(t *testing.T) {
 	testCases := []struct {
 		name        string
 		config      *Config
@@ -242,30 +254,25 @@ func TestNew(t *testing.T) {
 		{
 			name:        "Nil config",
 			config:      nil,
-			expectError: false,
+			expectError: true,
 		},
 		{
 			name: "Empty URL",
 			config: &Config{
 				ForwardAuthURL: "",
 			},
-			expectError: false,
+			expectError: true,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			next := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {})
-			handler, err := New(context.Background(), next, tc.config, "test-forward-auth-body")
-
+			_, err := New(context.Background(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), tc.config, "test")
 			if tc.expectError && err == nil {
 				t.Error("Expected error but got nil")
 			}
 			if !tc.expectError && err != nil {
-				t.Errorf("Unexpected error: %v", err)
-			}
-			if handler == nil {
-				t.Error("Handler should not be nil")
+				t.Errorf("Expected no error but got: %v", err)
 			}
 		})
 	}
