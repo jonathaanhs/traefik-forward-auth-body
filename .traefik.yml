@@ -1,0 +1,39 @@
+displayName: Forward Auth Body Plugin
+type: middleware
+import: github.com/jonathaanhs/traefik-forward-auth-body
+summary: A Traefik plugin that forwards request bodies in forward authentication requests.
+testData:
+  forwardAuthURL: http://auth-service:9000/auth
+
+icons:
+  - src: https://raw.githubusercontent.com/traefik/traefik/master/docs/content/assets/img/traefik.logo.png
+    type: image/png
+
+documentation: |
+  # Forward Auth Body Plugin
+
+  This plugin enables forwarding of request bodies during forward authentication in Traefik.
+
+  ## Static Configuration Example
+
+  ```yaml
+  pilot:
+    token: "xxxx"
+
+  experimental:
+    plugins:
+      forward-auth-body:
+        moduleName: "github.com/jonathaanhs/traefik-forward-auth-body"
+        version: "v1.0.0"
+  ```
+
+  ## Dynamic Configuration Example
+
+  ```yaml
+  http:
+    middlewares:
+      forward-auth-body:
+        plugin:
+          forward-auth-body:
+            forwardAuthURL: "http://auth-service:9000/auth"
+  ``` 

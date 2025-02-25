@@ -1,0 +1,6 @@
+displayName: Forward Auth Body Plugin
+type: middleware
+import: github.com/jonathaanhs/traefik-forward-auth-body
+summary: A Traefik plugin that forwards request bodies in forward authentication requests.
+testData:
+  forwardAuthURL: http://auth-service:9000/auth 
