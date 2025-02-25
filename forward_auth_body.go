@@ -1,5 +1,5 @@
-// Package forwardauth is a Traefik plugin that forwards request bodies in forward authentication.
-package forwardauth
+// Package traefik_forward_auth_body is a Traefik plugin that forwards request bodies in forward authentication.
+package traefik_forward_auth_body
 
 import (
 	"bytes"

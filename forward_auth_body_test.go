@@ -1,4 +1,4 @@
-package forwardauth
+package traefik_forward_auth_body
 
 import (
 	"bytes"
