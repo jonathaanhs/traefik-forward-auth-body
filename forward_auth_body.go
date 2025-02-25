@@ -19,14 +19,14 @@ func CreateConfig() *Config {
 	return &Config{}
 }
 
-// ForwardAuthBody is a plugin that forwards request bodies in forward authentication.
-type ForwardAuthBody struct {
-	name           string // align for better memory layout
-	forwardAuthURL string
-	next           http.Handler
+// Body is a plugin that forwards request bodies in forward authentication.
+type Body struct {
+	next           http.Handler // 8-byte pointer
+	forwardAuthURL string       // 16-byte string
+	name           string       // 16-byte string
 }
 
-// New creates a new ForwardAuthBody plugin.
+// New creates a new Body plugin.
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	if config == nil {
 		return nil, fmt.Errorf("configuration cannot be nil")
@@ -36,14 +36,14 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
 		return nil, fmt.Errorf("forwardAuthURL cannot be empty")
 	}
 
-	return &ForwardAuthBody{
+	return &Body{
 		next:           next,
 		forwardAuthURL: config.ForwardAuthURL,
 		name:           name,
 	}, nil
 }
 
-func (f *ForwardAuthBody) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (f *Body) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// Read the request body
 	body, err := io.ReadAll(req.Body)
 	if err != nil {

@@ -224,26 +224,30 @@ func TestForwardAuthBody_InvalidRequestBody(t *testing.T) {
 // errorReader is a mock io.Reader that always returns an error
 type errorReader struct{}
 
-func (e *errorReader) Read(_ []byte) (n int, err error) {
+func (e *errorReader) Read(_ []byte) (int, error) {
 	return 0, errors.New("mock read error")
 }
 
 func TestCreateConfig(t *testing.T) {
 	config := CreateConfig()
 	if config == nil {
-		t.Error("CreateConfig() returned nil")
+		t.Fatal("CreateConfig() returned nil")
+		return
 	}
 	if config.ForwardAuthURL != "" {
 		t.Errorf("Expected empty ForwardAuthURL, got %s", config.ForwardAuthURL)
 	}
 }
 
+// testCase represents a test case for New function validation.
+type testCase struct {
+	config      *Config // 8-byte pointer
+	name        string  // 16-byte string
+	expectError bool    // 1-byte bool
+}
+
 func TestNew_Validation(t *testing.T) {
-	testCases := []struct {
-		name        string
-		config      *Config
-		expectError bool
-	}{
+	testCases := []testCase{
 		{
 			name: "Valid configuration",
 			config: &Config{
@@ -283,7 +287,10 @@ func TestForwardAuthBody_InvalidRequestCreation(t *testing.T) {
 		ForwardAuthURL: "http://localhost\x00invalid", // Invalid URL with null byte
 	}
 
-	handler, _ := New(context.Background(), nil, cfg, "test-forward-auth-body")
+	handler, err := New(context.Background(), nil, cfg, "test-forward-auth-body")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "http://localhost", bytes.NewBufferString(`{"test":"data"}`))
 	recorder := httptest.NewRecorder()
