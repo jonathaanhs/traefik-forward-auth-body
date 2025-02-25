@@ -1,0 +1,60 @@
+run:
+  timeout: 5m
+
+linters-settings:
+  govet:
+    enable-all: true
+  gocyclo:
+    min-complexity: 12
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  misspell:
+    locale: US
+
+linters:
+  enable-all: true
+  disable:
+    - interfacer
+    - maligned
+    - scopelint
+    - golint
+    - exhaustivestruct
+    - bodyclose
+    - contextcheck
+    - nilerr
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - structcheck
+    - tparallel
+    - wastedassign
+    - varcheck
+    - deadcode
+    - exhaustruct
+    - nosnakecase
+    - ifshort
+    - varnamelen
+    - maintidx
+    - depguard
+    - ireturn
+    - forcetypeassert
+    - goerr113
+    - wrapcheck
+    - testpackage
+    - tagliatelle
+    - paralleltest
+    - godox
+    - wsl
+    - nlreturn
+    - gomnd
+    - gomoddirectives
+    - godot
+    - nestif
+    - cyclop
+    - funlen
+    - gocognit
+    - gocyclo
+    - lll
+    - dupl
+    - gosec 
