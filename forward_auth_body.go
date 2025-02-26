@@ -29,7 +29,7 @@ var hopHeaders = []string{
 	"Upgrade",
 }
 
-// Config holds the plugin configuration.
+// Config represents the plugin configuration.
 type Config struct {
 	ForwardAuthURL           string   `json:"forwardAuthURL,omitempty"`
 	AuthResponseHeaders      []string `json:"authResponseHeaders,omitempty"`
@@ -39,6 +39,7 @@ type Config struct {
 	HeaderField              string   `json:"headerField,omitempty"`
 	PreserveLocationHeader   bool     `json:"preserveLocationHeader,omitempty"`
 	PreserveRequestMethod    bool     `json:"preserveRequestMethod,omitempty"`
+	ForwardBody              bool     `json:"forwardBody,omitempty"`
 	MaxBodySize              int64    `json:"maxBodySize,omitempty"`
 }
 
@@ -50,11 +51,12 @@ func CreateConfig() *Config {
 		TrustForwardHeader:     false,
 		PreserveLocationHeader: false,
 		PreserveRequestMethod:  false,
-		MaxBodySize:            -1, // No limit by default
+		ForwardBody:            true, // Forward body by default for backward compatibility
+		MaxBodySize:            -1,   // No limit by default
 	}
 }
 
-// Body is a plugin that forwards request bodies in forward authentication.
+// Body represents the forward auth middleware instance.
 type Body struct {
 	next                   http.Handler
 	forwardAuthURL         string
@@ -66,6 +68,7 @@ type Body struct {
 	headerField            string
 	preserveLocationHeader bool
 	preserveRequestMethod  bool
+	forwardBody            bool
 	maxBodySize            int64
 	client                 http.Client
 }
@@ -108,6 +111,7 @@ func New(_ context.Context, next http.Handler, config *Config, name string) (htt
 		headerField:            config.HeaderField,
 		preserveLocationHeader: config.PreserveLocationHeader,
 		preserveRequestMethod:  config.PreserveRequestMethod,
+		forwardBody:            config.ForwardBody,
 		maxBodySize:            maxBodySize,
 		client: http.Client{
 			CheckRedirect: func(r *http.Request, via []*http.Request) error {
@@ -164,10 +168,22 @@ func (fa *Body) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			http.Error(rw, "Error reading request body", http.StatusInternalServerError)
 			return
 		}
+		// Restore the original request body for the next handler
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	}
 
-	// Create forward auth request
-	forwardReq, err := http.NewRequestWithContext(req.Context(), forwardReqMethod, fa.forwardAuthURL, bytes.NewReader(bodyBytes))
+	// Create forward auth request with or without body based on forwardBody flag
+	var forwardReq *http.Request
+	if fa.forwardBody && bodyBytes != nil {
+		forwardReq, err = http.NewRequestWithContext(req.Context(), forwardReqMethod, fa.forwardAuthURL, bytes.NewReader(bodyBytes))
+		// Set Content-Type and Content-Length if body is present
+		if req.Header.Get("Content-Type") != "" {
+			forwardReq.Header.Set("Content-Type", req.Header.Get("Content-Type"))
+		}
+		forwardReq.ContentLength = int64(len(bodyBytes))
+	} else {
+		forwardReq, err = http.NewRequestWithContext(req.Context(), forwardReqMethod, fa.forwardAuthURL, nil)
+	}
 	if err != nil {
 		http.Error(rw, "Error creating forward auth request", http.StatusInternalServerError)
 		return
@@ -252,11 +268,10 @@ func (fa *Body) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Restore the original body for the next handler
-	if bodyBytes != nil {
-		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
-	}
+	// Restore the request URI
 	req.RequestURI = req.URL.RequestURI()
+
+	// Call the next handler
 	fa.next.ServeHTTP(rw, req)
 }
 

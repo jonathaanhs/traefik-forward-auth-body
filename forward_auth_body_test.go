@@ -31,6 +31,11 @@ func TestForwardAuthBody_SuccessfulAuth(t *testing.T) {
 		}
 		defer r.Body.Close()
 
+		// Verify the body is not empty
+		if len(body) == 0 {
+			t.Fatal("Expected non-empty body")
+		}
+
 		var requestBody map[string]interface{}
 		if err := json.Unmarshal(body, &requestBody); err != nil {
 			t.Fatalf("Failed to parse forwarded request body: %v", err)
@@ -43,6 +48,7 @@ func TestForwardAuthBody_SuccessfulAuth(t *testing.T) {
 		// Set auth response headers
 		w.Header().Set("X-Auth-User", "testuser")
 		w.Header().Set("X-Custom-Header", "custom-value")
+		w.Header().Set("Content-Type", "text/plain")
 		if _, err := w.Write([]byte("OK")); err != nil {
 			t.Fatalf("Failed to write response: %v", err)
 		}
@@ -52,6 +58,7 @@ func TestForwardAuthBody_SuccessfulAuth(t *testing.T) {
 	cfg := &Config{
 		ForwardAuthURL:        mockAuthServer.URL,
 		PreserveRequestMethod: true,
+		ForwardBody:           true,
 	}
 
 	nextHandler := http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
@@ -67,6 +74,11 @@ func TestForwardAuthBody_SuccessfulAuth(t *testing.T) {
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			t.Fatalf("Failed to read request body in next handler: %v", err)
+		}
+
+		// Verify the body is not empty
+		if len(body) == 0 {
+			t.Fatal("Expected non-empty body in next handler")
 		}
 
 		var requestBody map[string]interface{}
@@ -91,6 +103,7 @@ func TestForwardAuthBody_SuccessfulAuth(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "http://localhost", bytes.NewBufferString(`{"test":"data"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(`{"test":"data"}`))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -685,7 +698,18 @@ func TestForwardAuthBody_BodyAndHeadersPreservation(t *testing.T) {
 	mockAuthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify the body was forwarded correctly
 		var req testRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("Failed to read forwarded request body: %v", err)
+		}
+		defer r.Body.Close()
+
+		// Verify the body is not empty
+		if len(body) == 0 {
+			t.Fatal("Expected non-empty body")
+		}
+
+		if err := json.Unmarshal(body, &req); err != nil {
 			t.Errorf("Failed to decode forwarded body: %v", err)
 		}
 		if req.Message != "test message" {
@@ -693,6 +717,7 @@ func TestForwardAuthBody_BodyAndHeadersPreservation(t *testing.T) {
 		}
 
 		w.Header().Set("X-Auth-User", "testuser")
+		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer mockAuthServer.Close()
@@ -701,12 +726,23 @@ func TestForwardAuthBody_BodyAndHeadersPreservation(t *testing.T) {
 		ForwardAuthURL:      mockAuthServer.URL,
 		AuthResponseHeaders: []string{"X-Auth-User"},
 		MaxBodySize:         1048576,
+		ForwardBody:         true,
 	}
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify the body is preserved
 		var req testRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("Failed to read preserved request body: %v", err)
+		}
+
+		// Verify the body is not empty
+		if len(body) == 0 {
+			t.Fatal("Expected non-empty body in next handler")
+		}
+
+		if err := json.Unmarshal(body, &req); err != nil {
 			t.Errorf("Failed to decode preserved body: %v", err)
 		}
 		if req.Message != "test message" {
@@ -727,11 +763,85 @@ func TestForwardAuthBody_BodyAndHeadersPreservation(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "http://localhost", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(bodyBytes))
 
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, recorder.Code)
+	}
+}
+
+func TestForwardAuthBody_ForwardBodyFlag(t *testing.T) {
+	mockAuthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("Failed to read forwarded request body: %v", err)
+		}
+
+		// When ForwardBody is false, the body should be empty
+		if !strings.Contains(r.URL.String(), "with-body") && len(body) != 0 {
+			t.Errorf("Expected empty body when ForwardBody is false, got %s", string(body))
+		}
+
+		// When ForwardBody is true, the body should contain the test data
+		if strings.Contains(r.URL.String(), "with-body") {
+			var requestBody map[string]interface{}
+			if err := json.Unmarshal(body, &requestBody); err != nil {
+				t.Fatalf("Failed to parse forwarded request body: %v", err)
+			}
+
+			if requestBody["test"] != "data" {
+				t.Errorf("Expected forwarded body to contain test:data, got %v", requestBody)
+			}
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockAuthServer.Close()
+
+	tests := []struct {
+		name        string
+		forwardBody bool
+		path        string
+	}{
+		{
+			name:        "Forward body enabled",
+			forwardBody: true,
+			path:        "/with-body",
+		},
+		{
+			name:        "Forward body disabled",
+			forwardBody: false,
+			path:        "/without-body",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				ForwardAuthURL: mockAuthServer.URL + tt.path,
+				ForwardBody:    tt.forwardBody,
+			}
+
+			handler, err := New(context.Background(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}), cfg, "test-forward-auth-body")
+
+			if err != nil {
+				t.Fatalf("Error creating middleware: %v", err)
+			}
+
+			req := httptest.NewRequest(http.MethodPost, "http://localhost", bytes.NewBufferString(`{"test":"data"}`))
+			req.Header.Set("Content-Type", "application/json")
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusOK {
+				t.Errorf("Expected status code %d, got %d", http.StatusOK, recorder.Code)
+			}
+		})
 	}
 }
