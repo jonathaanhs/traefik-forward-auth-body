@@ -4,6 +4,8 @@ run:
 linters-settings:
   govet:
     enable-all: true
+    disable:
+      - fieldalignment  # Disable struct field alignment checks
   gocyclo:
     min-complexity: 12
   goconst:
