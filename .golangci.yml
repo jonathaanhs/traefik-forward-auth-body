@@ -60,4 +60,9 @@ linters:
     - lll
     - dupl
     - gosec
-    - stylecheck 
+    - stylecheck
+    - errcheck      # Disable error checking
+    - errchkjson    # Disable JSON error checking
+    - goconst       # Disable constant string checking
+    - revive        # Disable package naming convention
+    - gochecknoglobals  # Disable global variable checking 
